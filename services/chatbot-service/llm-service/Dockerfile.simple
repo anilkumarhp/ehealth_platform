@@ -1,0 +1,23 @@
+FROM python:3.10-slim
+
+WORKDIR /app
+
+# Install simple dependencies without llama-cpp-python
+COPY . .
+
+# Install only the basic dependencies
+RUN pip install --no-cache-dir fastapi uvicorn pydantic
+
+# Set environment variables
+ENV PYTHONPATH=/app
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+
+# Expose the port
+EXPOSE 8008
+
+# Create a simple mock LLM service
+RUN echo 'from fastapi import FastAPI\nfrom pydantic import BaseModel\n\napp = FastAPI()\n\nclass CompletionRequest(BaseModel):\n    prompt: str\n    max_tokens: int = 100\n\nclass CompletionResponse(BaseModel):\n    text: str\n\n@app.post("/v1/completions", response_model=CompletionResponse)\nasync def generate_completion(request: CompletionRequest):\n    return CompletionResponse(text=f"Mock response for: {request.prompt[:30]}...")\n\nif __name__ == "__main__":\n    import uvicorn\n    uvicorn.run(app, host="0.0.0.0", port=8008)' > app.py
+
+# Run the application
+CMD ["python", "app.py"]

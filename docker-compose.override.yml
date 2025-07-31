@@ -1,0 +1,22 @@
+version: '3.8'
+
+services:
+  user-management-db:
+    volumes:
+      - ./services/user-management/scripts/init_schema.sql:/docker-entrypoint-initdb.d/init_schema.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  user-management:
+    depends_on:
+      user-management-db:
+        condition: service_healthy
+    environment:
+      - POSTGRES_HOST=user-management-db
+      - POSTGRES_PORT=5432
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=ehealth_user_management

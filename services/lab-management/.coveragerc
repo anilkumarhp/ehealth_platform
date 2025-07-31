@@ -1,0 +1,26 @@
+[run]
+source = app
+omit = 
+    */tests/*
+    */venv/*
+    */migrations/*
+    */generated/*
+    app/integrations/storage/s3_client.py
+    app/integrations/payment_gateways/*
+    app/models/payment.py
+    app/models/token.py
+    app/services/payment_service.py
+    app/tasks/notification_tasks.py
+
+[report]
+exclude_lines =
+    pragma: no cover
+    def __repr__
+    raise AssertionError
+    raise NotImplementedError
+    if __name__ == .__main__.:
+    class .*\(Protocol\):
+    @(abc\.)?abstractmethod
+
+[html]
+directory = htmlcov

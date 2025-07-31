@@ -1,0 +1,3 @@
+@echo off
+echo Running integration tests in Docker...
+docker-compose exec notification pytest tests/integration/ -v

@@ -1,0 +1,40 @@
+version: '3.8'
+
+services:
+  # Shared Redis service
+  shared-redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - shared_redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # Notification Service
+  notification:
+    build:
+      context: ./services/notification-service
+      dockerfile: Dockerfile
+    ports:
+      - "8004:8004"
+      - "50051:50051"
+    environment:
+      - REDIS_URL=redis://shared-redis:6379/0
+      - LOG_LEVEL=INFO
+    depends_on:
+      shared-redis:
+        condition: service_healthy
+    volumes:
+      - ./services/notification-service:/app
+    command: >
+      bash -c "pip install --no-cache-dir -r requirements.txt &&
+              pip install --no-cache-dir -r requirements-dev.txt &&
+              python -m grpc_tools.protoc -I. --python_out=. --grpc_python_out=. app/protos/notification.proto &&
+              uvicorn app.main:app --host 0.0.0.0 --port 8004 --reload"
+
+volumes:
+  shared_redis_data:

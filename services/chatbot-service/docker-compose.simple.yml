@@ -1,0 +1,35 @@
+services:
+  chatbot-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8002:8002"
+    environment:
+      - ENVIRONMENT=development
+      - DEBUG=true
+      - LOG_LEVEL=INFO
+      - LLM_SERVICE_URL=http://llm-service:11434
+      - LLM_MODEL_NAME=smollm2
+    depends_on:
+      - llm-service
+    restart: on-failure
+
+  llm-service:
+    image: ollama/ollama:latest
+    ports:
+      - "8008:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    environment:
+      - OLLAMA_MODELS=/root/.ollama/models
+
+  llm-initializer:
+    image: curlimages/curl:latest
+    command: sh -c "echo 'Waiting for Ollama...' && sleep 30 && curl -X POST http://llm-service:11434/api/pull -d '{\"name\":\"smollm2\"}'" 
+    depends_on:
+      - llm-service
+    restart: on-failure
+
+volumes:
+  ollama_data:

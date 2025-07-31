@@ -1,0 +1,3 @@
+@echo off
+echo Running unit tests in Docker...
+docker-compose exec notification pytest tests/unit/ -v

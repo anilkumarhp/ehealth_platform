@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>eHealth Chatbot</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f8f9fa;
+        }
+        .chat-container {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .chat-header {
+            background-color: #0275d8;
+            color: white;
+            padding: 15px;
+            border-radius: 10px 10px 0 0;
+            margin-bottom: 20px;
+        }
+        .chat-messages {
+            height: 500px;
+            overflow-y: auto;
+            padding: 15px;
+            background-color: white;
+            border-radius: 5px;
+            border: 1px solid #dee2e6;
+            margin-bottom: 20px;
+        }
+        .message {
+            margin-bottom: 15px;
+            padding: 10px 15px;
+            border-radius: 5px;
+            max-width: 80%;
+        }
+        .user-message {
+            background-color: #d1ecf1;
+            color: #0c5460;
+            margin-left: auto;
+        }
+        .assistant-message {
+            background-color: #f8f9fa;
+            color: #212529;
+            border: 1px solid #dee2e6;
+        }
+        .message-input {
+            display: flex;
+        }
+        .message-input textarea {
+            flex-grow: 1;
+            border-radius: 5px 0 0 5px;
+            resize: none;
+        }
+        .message-input button {
+            border-radius: 0 5px 5px 0;
+        }
+        .typing-indicator {
+            display: none;
+            padding: 10px;
+            color: #6c757d;
+        }
+        .conversation-list {
+            margin-bottom: 20px;
+        }
+        .conversation-item {
+            cursor: pointer;
+            padding: 10px;
+            border-radius: 5px;
+            margin-bottom: 5px;
+        }
+        .conversation-item:hover {
+            background-color: #f1f1f1;
+        }
+        .conversation-item.active {
+            background-color: #d1ecf1;
+        }
+    </style>
+</head>
+<body>
+    <div class="container mt-4">
+        <div class="row">
+            <div class="col-md-3">
+                <div class="card">
+                    <div class="card-header bg-primary text-white">
+                        Conversations
+                    </div>
+                    <div class="card-body p-0">
+                        <div class="list-group conversation-list" id="conversationList">
+                            <!-- Conversations will be loaded here -->
+                        </div>
+                        <div class="p-2">
+                            <button class="btn btn-sm btn-success w-100" id="newConversationBtn">
+                                New Conversation
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-9">
+                <div class="chat-container">
+                    <div class="chat-header">
+                        <h2>eHealth Chatbot</h2>
+                        <p>Ask me anything about healthcare!</p>
+                    </div>
+                    <div class="chat-messages" id="chatMessages">
+                        <div class="message assistant-message">
+                            Hello! I'm your healthcare assistant. How can I help you today?
+                        </div>
+                    </div>
+                    <div class="typing-indicator" id="typingIndicator">
+                        Assistant is typing...
+                    </div>
+                    <div class="message-input">
+                        <textarea class="form-control" id="messageInput" rows="2" placeholder="Type your message here..."></textarea>
+                        <button class="btn btn-primary" id="sendButton">Send</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Global variables
+        let currentConversationId = null;
+        
+        // DOM elements
+        const chatMessages = document.getElementById('chatMessages');
+        const messageInput = document.getElementById('messageInput');
+        const sendButton = document.getElementById('sendButton');
+        const typingIndicator = document.getElementById('typingIndicator');
+        const conversationList = document.getElementById('conversationList');
+        const newConversationBtn = document.getElementById('newConversationBtn');
+        
+        // Event listeners
+        sendButton.addEventListener('click', sendMessage);
+        messageInput.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendMessage();
+            }
+        });
+        newConversationBtn.addEventListener('click', startNewConversation);
+        
+        // Load conversations on page load
+        document.addEventListener('DOMContentLoaded', loadConversations);
+        
+        // Functions
+        function loadConversations() {
+            fetch('/api/v1/conversations')
+                .then(response => response.json())
+                .then(conversations => {
+                    conversationList.innerHTML = '';
+                    conversations.forEach(conversation => {
+                        const conversationItem = document.createElement('a');
+                        conversationItem.className = 'list-group-item list-group-item-action conversation-item';
+                        conversationItem.textContent = conversation.title;
+                        conversationItem.dataset.id = conversation.id;
+                        conversationItem.addEventListener('click', () => loadConversation(conversation.id));
+                        conversationList.appendChild(conversationItem);
+                    });
+                })
+                .catch(error => console.error('Error loading conversations:', error));
+        }
+        
+        function loadConversation(conversationId) {
+            currentConversationId = conversationId;
+            
+            // Update active conversation in UI
+            document.querySelectorAll('.conversation-item').forEach(item => {
+                item.classList.remove('active');
+                if (item.dataset.id === conversationId) {
+                    item.classList.add('active');
+                }
+            });
+            
+            // Load messages for this conversation
+            fetch(`/api/v1/conversations/${conversationId}/messages`)
+                .then(response => response.json())
+                .then(messages => {
+                    chatMessages.innerHTML = '';
+                    messages.forEach(message => {
+                        addMessageToUI(message.content, message.role);
+                    });
+                    
+                    // Scroll to bottom
+                    chatMessages.scrollTop = chatMessages.scrollHeight;
+                })
+                .catch(error => console.error('Error loading messages:', error));
+        }
+        
+        function startNewConversation() {
+            currentConversationId = null;
+            chatMessages.innerHTML = '<div class="message assistant-message">Hello! I\'m your healthcare assistant. How can I help you today?</div>';
+            
+            // Remove active class from all conversations
+            document.querySelectorAll('.conversation-item').forEach(item => {
+                item.classList.remove('active');
+            });
+        }
+        
+        function sendMessage() {
+            const message = messageInput.value.trim();
+            if (!message) return;
+            
+            // Add user message to UI
+            addMessageToUI(message, 'user');
+            
+            // Clear input
+            messageInput.value = '';
+            
+            // Show typing indicator
+            typingIndicator.style.display = 'block';
+            
+            // Prepare request
+            const requestBody = {
+                messages: [
+                    { role: 'user', content: message }
+                ],
+                conversation_id: currentConversationId,
+                max_tokens: 256,
+                temperature: 0.7
+            };
+            
+            // Send request to API
+            fetch('/api/v1/chat', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(requestBody)
+            })
+            .then(response => response.json())
+            .then(data => {
+                // Hide typing indicator
+                typingIndicator.style.display = 'none';
+                
+                // Add assistant response to UI
+                addMessageToUI(data.response, 'assistant');
+                
+                // Update conversation ID
+                currentConversationId = data.conversation_id;
+                
+                // Reload conversations
+                loadConversations();
+            })
+            .catch(error => {
+                console.error('Error sending message:', error);
+                typingIndicator.style.display = 'none';
+                addMessageToUI('Sorry, there was an error processing your request.', 'assistant');
+            });
+        }
+        
+        function addMessageToUI(content, role) {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${role}-message`;
+            messageDiv.textContent = content;
+            chatMessages.appendChild(messageDiv);
+            
+            // Scroll to bottom
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+    </script>
+</body>
+</html>

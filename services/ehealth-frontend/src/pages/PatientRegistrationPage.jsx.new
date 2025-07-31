@@ -1,0 +1,1051 @@
+import { useState, useEffect } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
+import authService from '../services/authService';
+import MFASetupTab from '../components/MFASetupTab';
+import apiUtils from '../utils/apiUtils';
+
+const privateInsuranceTypes = [
+  'Individual Health Insurance',
+  'Family Floater Health Insurance',
+  'Senior Citizen Health Insurance',
+  'Critical Illness Insurance',
+  'Top-up Plans',
+  'Super Top-up Plans',
+  'Disease-Specific Plans',
+  'Maternity Health Insurance',
+  'Personal Accident Insurance'
+];
+
+const governmentInsuranceTypes = [
+  'Ayushman Bharat - PM-JAY',
+  'Central Government Health Scheme (CGHS)',
+  'Employees State Insurance Scheme (ESIC)',
+  'Aam Aadmi Bima Yojana (AABY)',
+  'Aarogyasri (Telangana/Andhra Pradesh)',
+  'Mukhyamantri Chiranjeevi Swasthya Bima Yojana (Rajasthan)',
+  'Mahatma Jyotiba Phule Jan Arogya Yojana (Maharashtra)',
+  'Biju Swasthya Kalyan Yojana (Odisha)'
+];
+
+const PatientRegistrationPage = () => {
+  const [activeTab, setActiveTab] = useState('basic');
+  const [mfaSecret, setMfaSecret] = useState('');
+  const [qrCode, setQrCode] = useState('');
+  const [otp, setOtp] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState(null);
+  const [apiAvailable, setApiAvailable] = useState(true);
+  const [formData, setFormData] = useState({
+    // Basic Details
+    firstName: '',
+    lastName: '',
+    displayName: '',
+    dateOfBirth: '',
+    gender: '',
+    bloodGroup: '',
+    customBloodGroup: '',
+    email: '',
+    phone: '',
+    emergencyContact: '',
+    password: '',
+    confirmPassword: '',
+    aadharId: '',
+    photo: null,
+    // Address Details
+    street: '',
+    city: '',
+    state: '',
+    zipCode: '',
+    country: '',
+    addressType: 'home',
+    // Insurance Details
+    hasInsurance: false,
+    insuranceList: [],
+    // MFA Details
+    enableMfa: false
+  });
+  
+  const [currentInsurance, setCurrentInsurance] = useState({
+    insuranceCategory: '',
+    insuranceType: '',
+    customType: '',
+    providerName: '',
+    policyNumber: '',
+    groupNumber: '',
+    planType: '',
+    effectiveDate: '',
+    expirationDate: '',
+    copayAmount: '',
+    deductibleAmount: '',
+    policyHolderName: '',
+    relationshipToPolicyHolder: 'self',
+    insuranceFiles: []
+  });
+  
+  const [editingInsurance, setEditingInsurance] = useState(null);
+  
+  const navigate = useNavigate();
+  
+  // Check API availability when component mounts
+  useEffect(() => {
+    const checkApi = async () => {
+      const isAvailable = await apiUtils.checkApiAvailability();
+      setApiAvailable(isAvailable);
+      if (!isAvailable) {
+        setError('Unable to connect to the server. Please ensure the backend service is running.');
+      }
+    };
+    
+    checkApi();
+  }, []);
+
+  const handleInputChange = (e) => {
+    const { name, value, type, checked } = e.target;
+    setFormData(prev => ({
+      ...prev,
+      [name]: type === 'checkbox' ? checked : value
+    }));
+  };
+
+  const handleFileChange = (e) => {
+    setFormData(prev => ({
+      ...prev,
+      photo: e.target.files[0]
+    }));
+  };
+
+  const handleInsuranceInputChange = (e) => {
+    const { name, value } = e.target;
+    setCurrentInsurance(prev => ({
+      ...prev,
+      [name]: value
+    }));
+  };
+
+  const handleInsuranceFileChange = (e) => {
+    const files = Array.from(e.target.files);
+    setCurrentInsurance(prev => ({
+      ...prev,
+      insuranceFiles: [...prev.insuranceFiles, ...files]
+    }));
+  };
+
+  const addInsurance = () => {
+    if ((currentInsurance.insuranceCategory === 'government' || currentInsurance.providerName) && currentInsurance.policyNumber) {
+      const insuranceData = {
+        ...currentInsurance,
+        id: editingInsurance ? editingInsurance.id : Date.now(),
+        displayName: currentInsurance.insuranceType === 'other' ? currentInsurance.customType : currentInsurance.insuranceType
+      };
+      
+      if (editingInsurance) {
+        setFormData(prev => ({
+          ...prev,
+          insuranceList: prev.insuranceList.map(ins => 
+            ins.id === editingInsurance.id ? insuranceData : ins
+          )
+        }));
+        setEditingInsurance(null);
+      } else {
+        setFormData(prev => ({
+          ...prev,
+          insuranceList: [...prev.insuranceList, insuranceData]
+        }));
+      }
+      
+      setCurrentInsurance({
+        insuranceCategory: '',
+        insuranceType: '',
+        customType: '',
+        providerName: '',
+        policyNumber: '',
+        groupNumber: '',
+        planType: '',
+        effectiveDate: '',
+        expirationDate: '',
+        copayAmount: '',
+        deductibleAmount: '',
+        policyHolderName: '',
+        relationshipToPolicyHolder: 'self',
+        insuranceFiles: []
+      });
+    }
+  };
+  
+  const editInsurance = (insurance) => {
+    setCurrentInsurance(insurance);
+    setEditingInsurance(insurance);
+  };
+
+  const removeInsurance = (id) => {
+    setFormData(prev => ({
+      ...prev,
+      insuranceList: prev.insuranceList.filter(ins => ins.id !== id)
+    }));
+  };
+
+  const removeInsuranceFile = (index) => {
+    setCurrentInsurance(prev => ({
+      ...prev,
+      insuranceFiles: prev.insuranceFiles.filter((_, i) => i !== index)
+    }));
+  };
+
+  const handleNext = () => {
+    if (activeTab === 'basic') {
+      setActiveTab('address');
+    } else if (activeTab === 'address') {
+      setActiveTab('insurance');
+    } else if (activeTab === 'insurance') {
+      setActiveTab('mfa');
+    }
+  };
+
+  const handlePrevious = () => {
+    if (activeTab === 'mfa') {
+      setActiveTab('insurance');
+    } else if (activeTab === 'insurance') {
+      setActiveTab('address');
+    } else if (activeTab === 'address') {
+      setActiveTab('basic');
+    }
+  };
+
+  const handleClear = () => {
+    setFormData({
+      firstName: '',
+      lastName: '',
+      displayName: '',
+      dateOfBirth: '',
+      gender: '',
+      bloodGroup: '',
+      customBloodGroup: '',
+      email: '',
+      phone: '',
+      emergencyContact: '',
+      password: '',
+      confirmPassword: '',
+      aadharId: '',
+      photo: null,
+      street: '',
+      city: '',
+      state: '',
+      zipCode: '',
+      country: '',
+      addressType: 'home',
+      hasInsurance: false,
+      insuranceList: [],
+      enableMfa: false
+    });
+    setMfaSecret('');
+    setQrCode('');
+    setOtp('');
+    setCurrentInsurance({
+      insuranceCategory: '',
+      insuranceType: '',
+      customType: '',
+      providerName: '',
+      policyNumber: '',
+      groupNumber: '',
+      planType: '',
+      effectiveDate: '',
+      expirationDate: '',
+      copayAmount: '',
+      deductibleAmount: '',
+      policyHolderName: '',
+      relationshipToPolicyHolder: 'self',
+      insuranceFiles: []
+    });
+    setEditingInsurance(null);
+  };
+
+  const handleSave = async () => {
+    try {
+      setIsSubmitting(true);
+      setError(null);
+      
+      // Check API availability before submitting
+      const isAvailable = await apiUtils.checkApiAvailability();
+      if (!isAvailable) {
+        setError('Unable to connect to the server. Please ensure the backend service is running.');
+        setIsSubmitting(false);
+        return;
+      }
+      
+      // Validate form data
+      if (!formData.firstName || !formData.lastName || !formData.email || !formData.phone) {
+        setError('Please fill in all required fields');
+        setIsSubmitting(false);
+        return;
+      }
+      
+      if (formData.password !== formData.confirmPassword) {
+        setError('Passwords do not match');
+        setIsSubmitting(false);
+        return;
+      }
+      
+      // Prepare data for API
+      const userData = {
+        email: formData.email,
+        password: formData.password,
+        primary_phone: formData.phone,
+        enable_mfa: formData.enableMfa,
+        organization_name: "Patients", // Use a global organization for all patients
+        personal_info: {
+          first_name: formData.firstName,
+          last_name: formData.lastName,
+          date_of_birth: formData.dateOfBirth || null, // Send as string
+          gender: formData.gender,
+          display_name: formData.displayName,
+          emergency_contact: formData.emergencyContact
+        },
+        profile_data: {
+          blood_group: formData.bloodGroup === 'other' ? formData.customBloodGroup : formData.bloodGroup,
+          aadhaar_id: formData.aadharId,
+          address: {
+            street: formData.street,
+            city: formData.city,
+            state: formData.state,
+            postal_code: formData.zipCode,
+            country: formData.country,
+            address_type: formData.addressType
+          },
+          has_insurance: formData.hasInsurance,
+          insurance_plans: formData.insuranceList.map(insurance => ({
+            provider_name: insurance.providerName,
+            policy_number: insurance.policyNumber,
+            scheme_name: insurance.insuranceType === 'other' ? insurance.customType : insurance.insuranceType,
+            group_number: insurance.groupNumber || null,
+            plan_type: insurance.planType || null,
+            effective_date: insurance.effectiveDate || null,
+            expiration_date: insurance.expirationDate || null,
+            copay_amount: insurance.copayAmount || null,
+            deductible_amount: insurance.deductibleAmount || null,
+            policy_holder_name: insurance.policyHolderName || null,
+            relationship_to_policy_holder: insurance.relationshipToPolicyHolder || 'self',
+            insurance_category: insurance.insuranceCategory || 'private'
+          }))
+        }
+      };
+      
+      // Handle MFA registration if enabled
+      if (formData.enableMfa) {
+        if (!otp) {
+          setError('Please enter the OTP to verify your MFA setup');
+          setIsSubmitting(false);
+          return;
+        }
+        
+        const response = await authService.registerWithMfa(userData, otp);
+        if (response.success) {
+          navigate('/login', { state: { message: 'Registration successful! You can now log in with your credentials and MFA.' } });
+        } else {
+          setError(response.message || 'Registration failed. Please try again.');
+        }
+      } else {
+        // Regular registration without MFA
+        const response = await authService.register(userData);
+        if (response.success) {
+          navigate('/login', { state: { message: 'Registration successful! You can now log in with your credentials.' } });
+        } else {
+          setError(response.message || 'Registration failed. Please try again.');
+        }
+      }
+    } catch (err) {
+      console.error('Registration error:', err);
+      setError(err.message || 'An unexpected error occurred during registration');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleMfaToggle = async (e) => {
+    const enableMfa = e.target.checked;
+    setFormData(prev => ({ ...prev, enableMfa }));
+    
+    if (enableMfa && !mfaSecret) {
+      try {
+        const response = await authService.generateMfaSecret(formData.email);
+        if (response.success) {
+          setMfaSecret(response.secret);
+          setQrCode(response.qrCode);
+        } else {
+          setError(response.message || 'Failed to generate MFA secret');
+          setFormData(prev => ({ ...prev, enableMfa: false }));
+        }
+      } catch (err) {
+        console.error('MFA setup error:', err);
+        setError('Failed to set up MFA. Please try again.');
+        setFormData(prev => ({ ...prev, enableMfa: false }));
+      }
+    }
+  };
+
+  return (
+    <div className="container mx-auto px-4 py-8">
+      <h1 className="text-3xl font-bold mb-6">Patient Registration</h1>
+      
+      {error && (
+        <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
+          {error}
+        </div>
+      )}
+      
+      {!apiAvailable && (
+        <div className="bg-yellow-100 border border-yellow-400 text-yellow-700 px-4 py-3 rounded mb-4">
+          Warning: Backend API is not available. Please ensure the server is running before submitting the form.
+        </div>
+      )}
+      
+      <div className="mb-6">
+        <div className="flex border-b">
+          <button
+            className={`py-2 px-4 ${activeTab === 'basic' ? 'border-b-2 border-blue-500 text-blue-500' : ''}`}
+            onClick={() => setActiveTab('basic')}
+          >
+            Basic Details
+          </button>
+          <button
+            className={`py-2 px-4 ${activeTab === 'address' ? 'border-b-2 border-blue-500 text-blue-500' : ''}`}
+            onClick={() => setActiveTab('address')}
+          >
+            Address
+          </button>
+          <button
+            className={`py-2 px-4 ${activeTab === 'insurance' ? 'border-b-2 border-blue-500 text-blue-500' : ''}`}
+            onClick={() => setActiveTab('insurance')}
+          >
+            Insurance
+          </button>
+          <button
+            className={`py-2 px-4 ${activeTab === 'mfa' ? 'border-b-2 border-blue-500 text-blue-500' : ''}`}
+            onClick={() => setActiveTab('mfa')}
+          >
+            MFA Setup
+          </button>
+        </div>
+      </div>
+      
+      {/* Basic Details Tab */}
+      {activeTab === 'basic' && (
+        <div>
+          <h2 className="text-xl font-semibold mb-4">Basic Details</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block mb-1">First Name *</label>
+              <input
+                type="text"
+                name="firstName"
+                value={formData.firstName}
+                onChange={handleInputChange}
+                className="w-full p-2 border rounded"
+                required
+              />
+            </div>
+            <div>
+              <label className="block mb-1">Last Name *</label>
+              <input
+                type="text"
+                name="lastName"
+                value={formData.lastName}
+                onChange={handleInputChange}
+                className="w-full p-2 border rounded"
+                required
+              />
+            </div>
+            <div>
+              <label className="block mb-1">Display Name</label>
+              <input
+                type="text"
+                name="displayName"
+                value={formData.displayName}
+                onChange={handleInputChange}
+                className="w-full p-2 border rounded"
+                placeholder="How you want to be addressed"
+              />
+            </div>
+            <div>
+              <label className="block mb-1">Date of Birth</label>
+              <input
+                type="date"
+                name="dateOfBirth"
+                value={formData.dateOfBirth}
+                onChange={handleInputChange}
+                className="w-full p-2 border rounded"
+              />
+            </div>
+            <div>
+              <label className="block mb-1">Gender</label>
+              <select
+                name="gender"
+                value={formData.gender}
+                onChange={handleInputChange}
+                className="w-full p-2 border rounded"
+              >
+                <option value="">Select Gender</option>
+                <option value="male">Male</option>
+                <option value="female">Female</option>
+                <option value="other">Other</option>
+                <option value="prefer_not_to_say">Prefer not to say</option>
+              </select>
+            </div>
+            <div>
+              <label className="block mb-1">Blood Group</label>
+              <select
+                name="bloodGroup"
+                value={formData.bloodGroup}
+                onChange={handleInputChange}
+                className="w-full p-2 border rounded"
+              >
+                <option value="">Select Blood Group</option>
+                <option value="A+">A+</option>
+                <option value="A-">A-</option>
+                <option value="B+">B+</option>
+                <option value="B-">B-</option>
+                <option value="AB+">AB+</option>
+                <option value="AB-">AB-</option>
+                <option value="O+">O+</option>
+                <option value="O-">O-</option>
+                <option value="other">Other</option>
+              </select>
+              {formData.bloodGroup === 'other' && (
+                <input
+                  type="text"
+                  name="customBloodGroup"
+                  value={formData.customBloodGroup}
+                  onChange={handleInputChange}
+                  className="w-full p-2 border rounded mt-2"
+                  placeholder="Specify blood group"
+                />
+              )}
+            </div>
+            <div>
+              <label className="block mb-1">Email *</label>
+              <input
+                type="email"
+                name="email"
+                value={formData.email}
+                onChange={handleInputChange}
+                className="w-full p-2 border rounded"
+                required
+              />
+            </div>
+            <div>
+              <label className="block mb-1">Phone *</label>
+              <input
+                type="tel"
+                name="phone"
+                value={formData.phone}
+                onChange={handleInputChange}
+                className="w-full p-2 border rounded"
+                required
+              />
+            </div>
+            <div>
+              <label className="block mb-1">Emergency Contact</label>
+              <input
+                type="tel"
+                name="emergencyContact"
+                value={formData.emergencyContact}
+                onChange={handleInputChange}
+                className="w-full p-2 border rounded"
+              />
+            </div>
+            <div>
+              <label className="block mb-1">Password *</label>
+              <input
+                type="password"
+                name="password"
+                value={formData.password}
+                onChange={handleInputChange}
+                className="w-full p-2 border rounded"
+                required
+              />
+            </div>
+            <div>
+              <label className="block mb-1">Confirm Password *</label>
+              <input
+                type="password"
+                name="confirmPassword"
+                value={formData.confirmPassword}
+                onChange={handleInputChange}
+                className="w-full p-2 border rounded"
+                required
+              />
+            </div>
+            <div>
+              <label className="block mb-1">Aadhar ID</label>
+              <input
+                type="text"
+                name="aadharId"
+                value={formData.aadharId}
+                onChange={handleInputChange}
+                className="w-full p-2 border rounded"
+                placeholder="12-digit Aadhar number"
+              />
+            </div>
+            <div>
+              <label className="block mb-1">Profile Photo</label>
+              <input
+                type="file"
+                accept="image/*"
+                onChange={handleFileChange}
+                className="w-full p-2 border rounded"
+              />
+            </div>
+          </div>
+        </div>
+      )}
+      
+      {/* Address Tab */}
+      {activeTab === 'address' && (
+        <div>
+          <h2 className="text-xl font-semibold mb-4">Address Details</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="md:col-span-2">
+              <label className="block mb-1">Street Address</label>
+              <input
+                type="text"
+                name="street"
+                value={formData.street}
+                onChange={handleInputChange}
+                className="w-full p-2 border rounded"
+              />
+            </div>
+            <div>
+              <label className="block mb-1">City</label>
+              <input
+                type="text"
+                name="city"
+                value={formData.city}
+                onChange={handleInputChange}
+                className="w-full p-2 border rounded"
+              />
+            </div>
+            <div>
+              <label className="block mb-1">State</label>
+              <input
+                type="text"
+                name="state"
+                value={formData.state}
+                onChange={handleInputChange}
+                className="w-full p-2 border rounded"
+              />
+            </div>
+            <div>
+              <label className="block mb-1">ZIP Code</label>
+              <input
+                type="text"
+                name="zipCode"
+                value={formData.zipCode}
+                onChange={handleInputChange}
+                className="w-full p-2 border rounded"
+              />
+            </div>
+            <div>
+              <label className="block mb-1">Country</label>
+              <input
+                type="text"
+                name="country"
+                value={formData.country}
+                onChange={handleInputChange}
+                className="w-full p-2 border rounded"
+              />
+            </div>
+            <div>
+              <label className="block mb-1">Address Type</label>
+              <select
+                name="addressType"
+                value={formData.addressType}
+                onChange={handleInputChange}
+                className="w-full p-2 border rounded"
+              >
+                <option value="home">Home</option>
+                <option value="work">Work</option>
+                <option value="other">Other</option>
+              </select>
+            </div>
+          </div>
+        </div>
+      )}
+      
+      {/* Insurance Tab */}
+      {activeTab === 'insurance' && (
+        <div>
+          <h2 className="text-xl font-semibold mb-4">Insurance Details</h2>
+          <div className="mb-4">
+            <label className="inline-flex items-center">
+              <input
+                type="checkbox"
+                name="hasInsurance"
+                checked={formData.hasInsurance}
+                onChange={handleInputChange}
+                className="form-checkbox h-5 w-5 text-blue-600"
+              />
+              <span className="ml-2">I have health insurance</span>
+            </label>
+          </div>
+          
+          {formData.hasInsurance && (
+            <>
+              <div className="bg-gray-50 p-4 rounded-lg mb-6">
+                <h3 className="text-lg font-medium mb-3">{editingInsurance ? 'Edit Insurance' : 'Add Insurance'}</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block mb-1">Insurance Category *</label>
+                    <select
+                      name="insuranceCategory"
+                      value={currentInsurance.insuranceCategory}
+                      onChange={handleInsuranceInputChange}
+                      className="w-full p-2 border rounded"
+                    >
+                      <option value="">Select Category</option>
+                      <option value="private">Private Insurance</option>
+                      <option value="government">Government Scheme</option>
+                    </select>
+                  </div>
+                  
+                  {currentInsurance.insuranceCategory === 'private' && (
+                    <div>
+                      <label className="block mb-1">Insurance Type *</label>
+                      <select
+                        name="insuranceType"
+                        value={currentInsurance.insuranceType}
+                        onChange={handleInsuranceInputChange}
+                        className="w-full p-2 border rounded"
+                      >
+                        <option value="">Select Type</option>
+                        {privateInsuranceTypes.map(type => (
+                          <option key={type} value={type}>{type}</option>
+                        ))}
+                        <option value="other">Other</option>
+                      </select>
+                      {currentInsurance.insuranceType === 'other' && (
+                        <input
+                          type="text"
+                          name="customType"
+                          value={currentInsurance.customType}
+                          onChange={handleInsuranceInputChange}
+                          className="w-full p-2 border rounded mt-2"
+                          placeholder="Specify insurance type"
+                        />
+                      )}
+                    </div>
+                  )}
+                  
+                  {currentInsurance.insuranceCategory === 'government' && (
+                    <div>
+                      <label className="block mb-1">Scheme Name *</label>
+                      <select
+                        name="insuranceType"
+                        value={currentInsurance.insuranceType}
+                        onChange={handleInsuranceInputChange}
+                        className="w-full p-2 border rounded"
+                      >
+                        <option value="">Select Scheme</option>
+                        {governmentInsuranceTypes.map(type => (
+                          <option key={type} value={type}>{type}</option>
+                        ))}
+                        <option value="other">Other</option>
+                      </select>
+                      {currentInsurance.insuranceType === 'other' && (
+                        <input
+                          type="text"
+                          name="customType"
+                          value={currentInsurance.customType}
+                          onChange={handleInsuranceInputChange}
+                          className="w-full p-2 border rounded mt-2"
+                          placeholder="Specify scheme name"
+                        />
+                      )}
+                    </div>
+                  )}
+                  
+                  {currentInsurance.insuranceCategory === 'private' && (
+                    <div>
+                      <label className="block mb-1">Provider Name *</label>
+                      <input
+                        type="text"
+                        name="providerName"
+                        value={currentInsurance.providerName}
+                        onChange={handleInsuranceInputChange}
+                        className="w-full p-2 border rounded"
+                        placeholder="Insurance company name"
+                      />
+                    </div>
+                  )}
+                  
+                  <div>
+                    <label className="block mb-1">Policy Number *</label>
+                    <input
+                      type="text"
+                      name="policyNumber"
+                      value={currentInsurance.policyNumber}
+                      onChange={handleInsuranceInputChange}
+                      className="w-full p-2 border rounded"
+                    />
+                  </div>
+                  
+                  <div>
+                    <label className="block mb-1">Group Number</label>
+                    <input
+                      type="text"
+                      name="groupNumber"
+                      value={currentInsurance.groupNumber}
+                      onChange={handleInsuranceInputChange}
+                      className="w-full p-2 border rounded"
+                    />
+                  </div>
+                  
+                  <div>
+                    <label className="block mb-1">Plan Type</label>
+                    <input
+                      type="text"
+                      name="planType"
+                      value={currentInsurance.planType}
+                      onChange={handleInsuranceInputChange}
+                      className="w-full p-2 border rounded"
+                      placeholder="HMO, PPO, EPO, etc."
+                    />
+                  </div>
+                  
+                  <div>
+                    <label className="block mb-1">Effective Date</label>
+                    <input
+                      type="date"
+                      name="effectiveDate"
+                      value={currentInsurance.effectiveDate}
+                      onChange={handleInsuranceInputChange}
+                      className="w-full p-2 border rounded"
+                    />
+                  </div>
+                  
+                  <div>
+                    <label className="block mb-1">Expiration Date</label>
+                    <input
+                      type="date"
+                      name="expirationDate"
+                      value={currentInsurance.expirationDate}
+                      onChange={handleInsuranceInputChange}
+                      className="w-full p-2 border rounded"
+                    />
+                  </div>
+                  
+                  <div>
+                    <label className="block mb-1">Copay Amount</label>
+                    <input
+                      type="text"
+                      name="copayAmount"
+                      value={currentInsurance.copayAmount}
+                      onChange={handleInsuranceInputChange}
+                      className="w-full p-2 border rounded"
+                      placeholder="Amount in ₹"
+                    />
+                  </div>
+                  
+                  <div>
+                    <label className="block mb-1">Deductible Amount</label>
+                    <input
+                      type="text"
+                      name="deductibleAmount"
+                      value={currentInsurance.deductibleAmount}
+                      onChange={handleInsuranceInputChange}
+                      className="w-full p-2 border rounded"
+                      placeholder="Amount in ₹"
+                    />
+                  </div>
+                  
+                  <div>
+                    <label className="block mb-1">Policy Holder Name</label>
+                    <input
+                      type="text"
+                      name="policyHolderName"
+                      value={currentInsurance.policyHolderName}
+                      onChange={handleInsuranceInputChange}
+                      className="w-full p-2 border rounded"
+                      placeholder="Leave blank if self"
+                    />
+                  </div>
+                  
+                  <div>
+                    <label className="block mb-1">Relationship to Policy Holder</label>
+                    <select
+                      name="relationshipToPolicyHolder"
+                      value={currentInsurance.relationshipToPolicyHolder}
+                      onChange={handleInsuranceInputChange}
+                      className="w-full p-2 border rounded"
+                    >
+                      <option value="self">Self</option>
+                      <option value="spouse">Spouse</option>
+                      <option value="child">Child</option>
+                      <option value="parent">Parent</option>
+                      <option value="other">Other</option>
+                    </select>
+                  </div>
+                  
+                  <div className="md:col-span-2">
+                    <label className="block mb-1">Insurance Card/Documents</label>
+                    <input
+                      type="file"
+                      multiple
+                      onChange={handleInsuranceFileChange}
+                      className="w-full p-2 border rounded"
+                    />
+                    {currentInsurance.insuranceFiles.length > 0 && (
+                      <div className="mt-2">
+                        <p className="font-medium">Selected files:</p>
+                        <ul className="list-disc pl-5">
+                          {currentInsurance.insuranceFiles.map((file, index) => (
+                            <li key={index} className="flex items-center justify-between">
+                              <span>{file.name}</span>
+                              <button
+                                type="button"
+                                onClick={() => removeInsuranceFile(index)}
+                                className="text-red-500 hover:text-red-700"
+                              >
+                                Remove
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+                </div>
+                <div className="mt-4 flex justify-end">
+                  <button
+                    type="button"
+                    onClick={addInsurance}
+                    className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600"
+                    disabled={!((currentInsurance.insuranceCategory === 'government' || currentInsurance.providerName) && currentInsurance.policyNumber)}
+                  >
+                    {editingInsurance ? 'Update Insurance' : 'Add Insurance'}
+                  </button>
+                </div>
+              </div>
+              
+              {formData.insuranceList.length > 0 && (
+                <div className="mb-6">
+                  <h3 className="text-lg font-medium mb-3">Added Insurance Plans</h3>
+                  <div className="space-y-3">
+                    {formData.insuranceList.map(insurance => (
+                      <div key={insurance.id} className="border rounded p-3 flex justify-between items-center">
+                        <div>
+                          <p className="font-medium">{insurance.displayName}</p>
+                          <p className="text-sm text-gray-600">
+                            {insurance.insuranceCategory === 'private' ? insurance.providerName : 'Government Scheme'} | 
+                            Policy: {insurance.policyNumber}
+                          </p>
+                        </div>
+                        <div>
+                          <button
+                            type="button"
+                            onClick={() => editInsurance(insurance)}
+                            className="text-blue-500 hover:text-blue-700 mr-3"
+                          >
+                            Edit
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => removeInsurance(insurance.id)}
+                            className="text-red-500 hover:text-red-700"
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
+      
+      {/* MFA Setup Tab */}
+      {activeTab === 'mfa' && (
+        <div>
+          <h2 className="text-xl font-semibold mb-4">Multi-Factor Authentication Setup</h2>
+          <div className="mb-4">
+            <label className="inline-flex items-center">
+              <input
+                type="checkbox"
+                name="enableMfa"
+                checked={formData.enableMfa}
+                onChange={handleMfaToggle}
+                className="form-checkbox h-5 w-5 text-blue-600"
+              />
+              <span className="ml-2">Enable Multi-Factor Authentication (Recommended)</span>
+            </label>
+            <p className="text-sm text-gray-600 mt-1">
+              MFA adds an extra layer of security to your account by requiring a verification code in addition to your password.
+            </p>
+          </div>
+          
+          {formData.enableMfa && (
+            <MFASetupTab 
+              qrCode={qrCode} 
+              secret={mfaSecret} 
+              otp={otp} 
+              setOtp={setOtp} 
+            />
+          )}
+        </div>
+      )}
+      
+      <div className="mt-6 flex justify-between">
+        <div>
+          {activeTab !== 'basic' && (
+            <button
+              type="button"
+              onClick={handlePrevious}
+              className="bg-gray-300 text-gray-800 px-4 py-2 rounded hover:bg-gray-400 mr-2"
+            >
+              Previous
+            </button>
+          )}
+        </div>
+        <div>
+          <button
+            type="button"
+            onClick={handleClear}
+            className="bg-red-500 text-white px-4 py-2 rounded hover:bg-red-600 mr-2"
+          >
+            Clear Form
+          </button>
+          {activeTab !== 'mfa' ? (
+            <button
+              type="button"
+              onClick={handleNext}
+              className="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600"
+            >
+              Next
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={handleSave}
+              className="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600"
+              disabled={isSubmitting}
+            >
+              {isSubmitting ? 'Registering...' : 'Complete Registration'}
+            </button>
+          )}
+        </div>
+      </div>
+      
+      <div className="mt-6 text-center">
+        <p>
+          Already have an account?{' '}
+          <Link to="/login" className="text-blue-500 hover:underline">
+            Log in here
+          </Link>
+        </p>
+      </div>
+    </div>
+  );
+};
+
+export default PatientRegistrationPage;

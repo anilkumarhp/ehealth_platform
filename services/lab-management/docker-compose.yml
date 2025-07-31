@@ -1,0 +1,115 @@
+services:
+  # The PostgreSQL Database Service
+  db:
+    image: postgres:15-alpine
+    container_name: lab_db
+    volumes:
+      - postgres_data:/var/lib/postgresql/data/
+      # --- THIS IS THE FIX ---
+      # Mount the init script into the container's startup directory
+      - ./scripts/init-test-db.sh:/docker-entrypoint-initdb.d/init-test-db.sh
+      # --- END OF FIX ---
+    ports:
+      - "5433:5432"
+    environment:
+      - POSTGRES_USER=${DB_USER}
+      - POSTGRES_PASSWORD=${DB_PASSWORD}
+      - POSTGRES_DB=${DB_NAME}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # The Redis Service for Celery
+  redis:
+    image: redis:7-alpine
+    container_name: lab_redis
+    ports:
+      - "6379:6379"
+
+  # The FastAPI Application Service
+  app:
+    container_name: lab_app
+    build: .
+    ports:
+      - "8000:8000"
+    volumes:
+      # Mounts the local app directory into the container for live reloading
+      - .:/app
+    env_file:
+      - ./.env
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    depends_on:
+      db:
+        condition: service_healthy # Waits for the DB to be ready
+      redis:
+        condition: service_started
+
+  # Test Service
+  test:
+    container_name: lab_test
+    build: .
+    volumes:
+      - .:/app
+    env_file:
+      - ./.env
+    # command: python -m pytest tests/ -v
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+
+
+  # Data Population Service
+  populate:
+    container_name: lab_populate
+    build: .
+    volumes:
+      - .:/app
+    env_file:
+      - ./.env
+    environment:
+      - PYTHONPATH=/app
+    command: python scripts/populate_data.py
+    depends_on:
+      db:
+        condition: service_healthy
+
+  # Celery Worker Service
+  worker:
+    container_name: lab_worker
+    build: .
+    volumes:
+      - .:/app
+    env_file:
+      - ./.env
+    environment:
+      - PYTHONPATH=/app
+    command: celery -A app.tasks.celery_app worker --loglevel=info
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+
+  # Celery Beat Service (for scheduled tasks)
+  beat:
+    container_name: lab_beat
+    build: .
+    volumes:
+      - .:/app
+    env_file:
+      - ./.env
+    environment:
+      - PYTHONPATH=/app
+    command: celery -A app.tasks.celery_app beat --loglevel=info
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+
+volumes:
+  postgres_data:

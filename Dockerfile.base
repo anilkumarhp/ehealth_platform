@@ -1,0 +1,13 @@
+FROM python:3.10-slim
+
+WORKDIR /app
+
+# Install base dependencies
+COPY requirements-base.txt /app/
+RUN pip install --no-cache-dir -r /app/requirements-base.txt
+
+# Install system dependencies for gRPC
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    protobuf-compiler \
+    && rm -rf /var/lib/apt/lists/*

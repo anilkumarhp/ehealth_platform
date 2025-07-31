@@ -1,0 +1,103 @@
+.conversation-history {
+  background-color: white;
+  border-radius: 8px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  padding: 20px;
+  margin-bottom: 20px;
+}
+
+.conversation-history h3 {
+  font-size: 18px;
+  margin-top: 0;
+  margin-bottom: 16px;
+  color: #111827;
+  border-bottom: 1px solid #e5e7eb;
+  padding-bottom: 10px;
+}
+
+.conversation-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.conversation-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px;
+  border-radius: 6px;
+  background-color: #f9fafb;
+  transition: background-color 0.2s;
+}
+
+.conversation-item:hover {
+  background-color: #f3f4f6;
+}
+
+.conversation-summary {
+  flex: 1;
+}
+
+.conversation-summary h4 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 500;
+  color: #111827;
+}
+
+.conversation-date {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: #6b7280;
+}
+
+.view-conversation {
+  background-color: #3b82f6;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 500;
+  text-decoration: none;
+  transition: background-color 0.2s;
+}
+
+.view-conversation:hover {
+  background-color: #2563eb;
+}
+
+.conversation-loading {
+  padding: 20px;
+  text-align: center;
+  color: #6b7280;
+}
+
+.conversation-error {
+  padding: 20px;
+  text-align: center;
+  color: #ef4444;
+}
+
+.retry-button {
+  background-color: #ef4444;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  margin-top: 8px;
+}
+
+.retry-button:hover {
+  background-color: #dc2626;
+}
+
+.no-conversations {
+  padding: 20px;
+  text-align: center;
+  color: #6b7280;
+}

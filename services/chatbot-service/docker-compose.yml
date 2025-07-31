@@ -1,0 +1,85 @@
+services:
+  chatbot-db:
+    image: postgres:15
+    environment:
+      POSTGRES_DB: chatbot_service
+      POSTGRES_USER: chatbotuser
+      POSTGRES_PASSWORD: chatbotpassword
+    ports:
+      - "5435:5432"
+    volumes:
+      - chatbot_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U chatbotuser -d chatbot_service"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  chatbot-redis:
+    image: redis:7-alpine
+    ports:
+      - "6381:6379"  # Already using a different port
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  chatbot-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8002:8002"
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://chatbotuser:chatbotpassword@chatbot-db:5432/chatbot_service
+      - REDIS_URL=redis://chatbot-redis:6379/0
+      - SECRET_KEY=chatbot-super-secret-key-change-in-production
+      - ENVIRONMENT=development
+      - DEBUG=true
+      - LOG_LEVEL=INFO
+      - USER_SERVICE_URL=http://user-management-api:8000
+      - PHARMA_SERVICE_URL=http://pharma-management-app:8001
+      - LAB_SERVICE_URL=http://lab-management-api:8003
+      - LLM_SERVICE_URL=http://llm-service:11434
+      - LLM_MODEL_NAME=smollm2
+    depends_on:
+      chatbot-db:
+        condition: service_healthy
+      chatbot-redis:
+        condition: service_healthy
+      llm-service:
+        condition: service_started
+    restart: on-failure
+    volumes:
+      - ./app:/app/app
+      - ./scripts:/app/scripts
+      - ./tests:/app/tests
+      - ./logs:/app/logs
+
+  llm-service:
+    image: ollama/ollama:latest
+    ports:
+      - "8008:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    environment:
+      - OLLAMA_MODELS=/root/.ollama/models
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s --fail http://localhost:11434/api/health || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
+      
+  llm-initializer:
+    image: curlimages/curl:latest
+    command: sh -c "echo 'Waiting for Ollama...' && sleep 30 && curl -X POST http://llm-service:11434/api/pull -d '{\"name\":\"smollm2\"}'" 
+    depends_on:
+      llm-service:
+        condition: service_healthy
+    restart: on-failure
+
+volumes:
+  chatbot_data:
+  ollama_data:

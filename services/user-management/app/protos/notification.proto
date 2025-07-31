@@ -1,0 +1,85 @@
+syntax = "proto3";
+
+package notification;
+
+import "google/protobuf/timestamp.proto";
+
+service NotificationService {
+  // Send a notification
+  rpc SendNotification (NotificationRequest) returns (NotificationResponse) {}
+  
+  // Get notifications for a user
+  rpc GetUserNotifications (UserNotificationsRequest) returns (UserNotificationsResponse) {}
+  
+  // Mark a notification as read
+  rpc MarkNotificationAsRead (MarkAsReadRequest) returns (MarkAsReadResponse) {}
+}
+
+enum NotificationType {
+  INFO = 0;
+  SUCCESS = 1;
+  WARNING = 2;
+  ERROR = 3;
+}
+
+enum ServiceType {
+  USER_MANAGEMENT = 0;
+  LAB_MANAGEMENT = 1;
+  PHARMA_MANAGEMENT = 2;
+  HOSPITAL_MANAGEMENT = 3;
+  CHAT = 4;
+}
+
+message NotificationRequest {
+  string id = 1;
+  ServiceType service = 2;
+  NotificationType type = 3;
+  string title = 4;
+  string message = 5;
+  string user_id = 6;
+  google.protobuf.Timestamp created_at = 7;
+  optional google.protobuf.Timestamp expires_at = 8;
+  map<string, string> data = 9;
+}
+
+message NotificationResponse {
+  string notification_id = 1;
+  bool success = 2;
+  string error_message = 3;
+}
+
+message UserNotificationsRequest {
+  string user_id = 1;
+  bool include_read = 2;
+  int32 limit = 3;
+  int32 offset = 4;
+}
+
+message Notification {
+  string id = 1;
+  ServiceType service = 2;
+  NotificationType type = 3;
+  string title = 4;
+  string message = 5;
+  string user_id = 6;
+  google.protobuf.Timestamp created_at = 7;
+  optional google.protobuf.Timestamp expires_at = 8;
+  map<string, string> data = 9;
+  bool read = 10;
+}
+
+message UserNotificationsResponse {
+  repeated Notification notifications = 1;
+  int32 total_count = 2;
+  int32 unread_count = 3;
+}
+
+message MarkAsReadRequest {
+  string user_id = 1;
+  string notification_id = 2;
+}
+
+message MarkAsReadResponse {
+  bool success = 1;
+  string error_message = 2;
+}

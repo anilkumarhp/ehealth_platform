@@ -1,0 +1,19 @@
+@echo off
+echo Starting eHealth platform services...
+echo This will take a few minutes to start and download the language model...
+
+REM Start the services in the background
+start /B docker-compose up
+
+echo Waiting for services to start (2 minutes)...
+timeout /t 120 /nobreak
+
+echo Running tests...
+python test-chatbot.py
+
+echo Test completed!
+echo Press any key to stop the services...
+pause
+
+echo Stopping services...
+docker-compose down

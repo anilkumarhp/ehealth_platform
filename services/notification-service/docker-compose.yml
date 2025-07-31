@@ -1,0 +1,36 @@
+version: '3.8'
+
+services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6380:6379"  # Changed port to avoid conflicts
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  notification:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8004:8004"
+      - "50051:50051"
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - LOG_LEVEL=INFO
+      - PYTHONPATH=/app
+    depends_on:
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./:/app
+      - ./test-results:/app/test-results
+    # Install dependencies and run the app
+    command: >
+      bash -c "pip install --no-cache-dir -r requirements.txt &&
+              pip install --no-cache-dir -r requirements-dev.txt &&
+              python -m grpc_tools.protoc -I. --python_out=. --grpc_python_out=. app/protos/notification.proto &&
+              uvicorn app.main:app --host 0.0.0.0 --port 8004"

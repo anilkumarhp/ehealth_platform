@@ -1,0 +1,31 @@
+FROM python:3.10-slim
+
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    git \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install transformers and other dependencies
+RUN pip install --no-cache-dir \
+    fastapi==0.104.1 \
+    uvicorn==0.24.0 \
+    transformers==4.35.2 \
+    torch==2.1.0 --index-url https://download.pytorch.org/whl/cpu \
+    accelerate==0.24.1 \
+    sentencepiece==0.1.99 \
+    pydantic==2.4.2
+
+# Copy application code
+COPY . .
+
+# Create a simple LLM service using transformers
+RUN echo 'from fastapi import FastAPI, HTTPException\nfrom pydantic import BaseModel\nimport torch\nfrom transformers import AutoModelForCausalLM, AutoTokenizer\nimport os\n\napp = FastAPI()\n\n# Load a small model for testing\nmodel_name = "TinyLlama/TinyLlama-1.1B-Chat-v1.0"\n\nprint("Loading model...")\ntokenizer = AutoTokenizer.from_pretrained(model_name)\nmodel = AutoModelForCausalLM.from_pretrained(\n    model_name,\n    torch_dtype=torch.float32,\n    low_cpu_mem_usage=True,\n    device_map="auto"\n)\nprint("Model loaded!")\n\nclass CompletionRequest(BaseModel):\n    prompt: str\n    max_tokens: int = 100\n    temperature: float = 0.7\n\nclass CompletionResponse(BaseModel):\n    text: str\n\n@app.post("/v1/completions", response_model=CompletionResponse)\nasync def generate_completion(request: CompletionRequest):\n    try:\n        inputs = tokenizer(request.prompt, return_tensors="pt")\n        with torch.no_grad():\n            outputs = model.generate(\n                inputs["input_ids"],\n                max_new_tokens=request.max_tokens,\n                temperature=request.temperature,\n                do_sample=True,\n                pad_token_id=tokenizer.eos_token_id\n            )\n        response_text = tokenizer.decode(outputs[0][inputs["input_ids"].shape[1]:], skip_special_tokens=True)\n        return CompletionResponse(text=response_text)\n    except Exception as e:\n        raise HTTPException(status_code=500, detail=str(e))\n\n@app.get("/health")\nasync def health_check():\n    return {"status": "ok"}\n\nif __name__ == "__main__":\n    import uvicorn\n    uvicorn.run(app, host="0.0.0.0", port=8008)\n' > app.py
+
+# Expose the port
+EXPOSE 8008
+
+# Run the application
+CMD ["python", "app.py"]

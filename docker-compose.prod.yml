@@ -1,0 +1,340 @@
+version: '3.8'
+
+services:
+  # Nginx reverse proxy
+  nginx:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ehealth-nginx
+    ports:
+      - "80:80"
+    networks:
+      - ehealth-network
+    depends_on:
+      - user-management
+      - pharma-management
+      - lab-management
+      - hospital-management
+      - notification-service
+      - chatbot-service
+      - ehealth-frontend
+      
+  # Frontend Service
+  ehealth-frontend:
+    build: 
+      context: ./services/ehealth-frontend
+      dockerfile: Dockerfile
+    container_name: ehealth-frontend
+    expose:
+      - "3000"
+    environment:
+      - NODE_ENV=production
+      - VITE_API_URL=/api
+      - VITE_USER_SERVICE_URL=/api/users
+      - VITE_PHARMA_SERVICE_URL=/api/pharma
+      - VITE_LAB_SERVICE_URL=/api/labs
+      - VITE_HOSPITAL_SERVICE_URL=/api/hospitals
+      - VITE_CHATBOT_SERVICE_URL=/api/chatbot
+    networks:
+      - ehealth-network
+
+  # User Management Service
+  user-management:
+    build: 
+      context: ./services/user-management
+      dockerfile: Dockerfile.prod
+    container_name: user-management
+    expose:
+      - "8000"
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://usermanagementuser:usermanagementpassword@user-management-db:5432/user_management_service
+      - SECRET_KEY=${USER_MGMT_SECRET_KEY}
+      - ENVIRONMENT=production
+      - NOTIFICATION_SERVICE_GRPC=notification-service:50051
+    networks:
+      - ehealth-network
+    depends_on:
+      user-management-db:
+        condition: service_healthy
+      notification-service:
+        condition: service_started
+    restart: always
+
+  user-management-db:
+    image: postgres:15
+    container_name: user-management-db
+    environment:
+      POSTGRES_DB: user_management_service
+      POSTGRES_USER: usermanagementuser
+      POSTGRES_PASSWORD: ${USER_MGMT_DB_PASSWORD}
+    volumes:
+      - user_management_data:/var/lib/postgresql/data
+    networks:
+      - ehealth-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U usermanagementuser -d user_management_service"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: always
+
+  # Pharmacy Management Service
+  pharma-management:
+    build: 
+      context: ./services/pharma-management
+      dockerfile: Dockerfile.prod
+    container_name: pharma-management
+    expose:
+      - "8001"
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://pharmauser:pharmapassword@pharma-management-db:5432/pharma_service
+      - SECRET_KEY=${PHARMA_SECRET_KEY}
+      - ENVIRONMENT=production
+      - NOTIFICATION_SERVICE_GRPC=notification-service:50051
+    networks:
+      - ehealth-network
+    depends_on:
+      pharma-management-db:
+        condition: service_healthy
+      notification-service:
+        condition: service_started
+    restart: always
+
+  pharma-management-db:
+    image: postgres:15
+    container_name: pharma-management-db
+    environment:
+      POSTGRES_DB: pharma_service
+      POSTGRES_USER: pharmauser
+      POSTGRES_PASSWORD: ${PHARMA_DB_PASSWORD}
+    volumes:
+      - pharma_management_data:/var/lib/postgresql/data
+    networks:
+      - ehealth-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pharmauser -d pharma_service"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: always
+
+  # Lab Management Service
+  lab-management:
+    build: 
+      context: ./services/lab-management
+      dockerfile: Dockerfile.prod
+    container_name: lab-management
+    expose:
+      - "8003"
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://labuser:labpassword@lab-management-db:5432/lab_service
+      - SECRET_KEY=${LAB_SECRET_KEY}
+      - ENVIRONMENT=production
+      - NOTIFICATION_SERVICE_GRPC=notification-service:50051
+    networks:
+      - ehealth-network
+    depends_on:
+      lab-management-db:
+        condition: service_healthy
+      notification-service:
+        condition: service_started
+    restart: always
+
+  lab-management-db:
+    image: postgres:15
+    container_name: lab-management-db
+    environment:
+      POSTGRES_DB: lab_service
+      POSTGRES_USER: labuser
+      POSTGRES_PASSWORD: ${LAB_DB_PASSWORD}
+    volumes:
+      - lab_management_data:/var/lib/postgresql/data
+    networks:
+      - ehealth-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U labuser -d lab_service"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: always
+
+  # Hospital Management Service
+  hospital-management:
+    build: 
+      context: ./services/hospital-management
+      dockerfile: Dockerfile.prod
+    container_name: hospital-management
+    expose:
+      - "8005"
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://hospitaluser:hospitalpassword@hospital-management-db:5432/hospital_service
+      - SECRET_KEY=${HOSPITAL_SECRET_KEY}
+      - ENVIRONMENT=production
+      - NOTIFICATION_SERVICE_GRPC=notification-service:50051
+    networks:
+      - ehealth-network
+    depends_on:
+      hospital-management-db:
+        condition: service_healthy
+      notification-service:
+        condition: service_started
+    restart: always
+
+  hospital-management-db:
+    image: postgres:15
+    container_name: hospital-management-db
+    environment:
+      POSTGRES_DB: hospital_service
+      POSTGRES_USER: hospitaluser
+      POSTGRES_PASSWORD: ${HOSPITAL_DB_PASSWORD}
+    volumes:
+      - hospital_management_data:/var/lib/postgresql/data
+    networks:
+      - ehealth-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hospitaluser -d hospital_service"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: always
+
+  # Chatbot Service
+  chatbot-service:
+    build: 
+      context: ./services/chatbot-service
+      dockerfile: Dockerfile.prod
+    container_name: chatbot-service
+    expose:
+      - "8002"
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://chatbotuser:chatbotpassword@chatbot-db:5432/chatbot_service
+      - REDIS_URL=redis://redis:6379/0
+      - SECRET_KEY=${CHATBOT_SECRET_KEY}
+      - ENVIRONMENT=production
+      - USER_SERVICE_URL=http://user-management:8000
+      - PHARMA_SERVICE_URL=http://pharma-management:8001
+      - LAB_SERVICE_URL=http://lab-management:8003
+      - HOSPITAL_SERVICE_URL=http://hospital-management:8005
+      - LLM_SERVICE_URL=http://llm-service:8008
+      - NOTIFICATION_SERVICE_GRPC=notification-service:50051
+    networks:
+      - ehealth-network
+    depends_on:
+      chatbot-db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      llm-service:
+        condition: service_started
+    restart: always
+
+  chatbot-db:
+    image: postgres:15
+    container_name: chatbot-db
+    environment:
+      POSTGRES_DB: chatbot_service
+      POSTGRES_USER: chatbotuser
+      POSTGRES_PASSWORD: ${CHATBOT_DB_PASSWORD}
+    volumes:
+      - chatbot_data:/var/lib/postgresql/data
+    networks:
+      - ehealth-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U chatbotuser -d chatbot_service"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: always
+
+  # Notification Service
+  notification-service:
+    build: 
+      context: ./services/notification-service
+      dockerfile: Dockerfile.prod
+    container_name: notification-service
+    expose:
+      - "8004"  # REST API
+      - "50051"  # gRPC
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://notificationuser:notificationpassword@notification-db:5432/notification_service
+      - REDIS_URL=redis://redis:6379/0
+      - SECRET_KEY=${NOTIFICATION_SECRET_KEY}
+      - ENVIRONMENT=production
+      - USER_SERVICE_URL=http://user-management:8000
+      - PHARMA_SERVICE_URL=http://pharma-management:8001
+      - LAB_SERVICE_URL=http://lab-management:8003
+      - HOSPITAL_SERVICE_URL=http://hospital-management:8005
+    networks:
+      - ehealth-network
+    depends_on:
+      notification-db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: always
+
+  notification-db:
+    image: postgres:15
+    container_name: notification-db
+    environment:
+      POSTGRES_DB: notification_service
+      POSTGRES_USER: notificationuser
+      POSTGRES_PASSWORD: ${NOTIFICATION_DB_PASSWORD}
+    volumes:
+      - notification_data:/var/lib/postgresql/data
+    networks:
+      - ehealth-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U notificationuser -d notification_service"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: always
+
+  # LLM Service
+  llm-service:
+    build: 
+      context: ./services/chatbot-service/llm-service
+      dockerfile: Dockerfile.prod
+    container_name: llm-service
+    expose:
+      - "8008"
+    environment:
+      - MODEL_PATH=/models/mistral-7b-instruct-v0.2.Q4_K_M.gguf
+      - THREADS=4
+      - CONTEXT_SIZE=2048
+    networks:
+      - ehealth-network
+    volumes:
+      - ./services/chatbot-service/models:/models:ro
+    restart: always
+
+  # Redis (shared by services)
+  redis:
+    image: redis:7-alpine
+    container_name: redis
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    networks:
+      - ehealth-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: always
+
+networks:
+  ehealth-network:
+    driver: bridge
+
+volumes:
+  user_management_data:
+  pharma_management_data:
+  chatbot_data:
+  lab_management_data:
+  hospital_management_data:
+  notification_data:
+  redis_data:

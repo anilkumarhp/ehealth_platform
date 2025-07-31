@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Notification WebSocket Test</title>
+    <script src="https://cdn.socket.io/4.6.0/socket.io.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        #notifications {
+            border: 1px solid #ccc;
+            padding: 10px;
+            height: 300px;
+            overflow-y: auto;
+            margin-bottom: 20px;
+        }
+        .notification {
+            padding: 10px;
+            margin-bottom: 10px;
+            border-radius: 4px;
+        }
+        .info { background-color: #e3f2fd; }
+        .success { background-color: #e8f5e9; }
+        .warning { background-color: #fff8e1; }
+        .error { background-color: #ffebee; }
+        button {
+            padding: 10px;
+            margin-right: 10px;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <h1>Notification WebSocket Test</h1>
+    
+    <div>
+        <label for="userId">User ID:</label>
+        <input type="text" id="userId" value="test-user-123">
+        <button onclick="connectWebSocket()">Connect</button>
+        <button onclick="disconnectWebSocket()">Disconnect</button>
+    </div>
+    
+    <h2>Notifications</h2>
+    <div id="notifications"></div>
+    
+    <h2>Send Test Notification</h2>
+    <div>
+        <label for="notificationType">Type:</label>
+        <select id="notificationType">
+            <option value="info">Info</option>
+            <option value="success">Success</option>
+            <option value="warning">Warning</option>
+            <option value="error">Error</option>
+        </select>
+        
+        <label for="notificationTitle">Title:</label>
+        <input type="text" id="notificationTitle" value="Test Notification">
+        
+        <label for="notificationMessage">Message:</label>
+        <input type="text" id="notificationMessage" value="This is a test notification">
+        
+        <button onclick="sendTestNotification()">Send</button>
+    </div>
+    
+    <script>
+        let socket;
+        
+        function connectWebSocket() {
+            const userId = document.getElementById('userId').value;
+            if (!userId) {
+                alert('Please enter a User ID');
+                return;
+            }
+            
+            // Connect to WebSocket
+            socket = io('http://localhost:8004/ws');
+            
+            socket.on('connect', () => {
+                console.log('Connected to WebSocket');
+                addMessage('System', 'Connected to WebSocket');
+                
+                // Subscribe to user notifications
+                socket.emit('subscribe', { userId });
+                addMessage('System', `Subscribed to notifications for user ${userId}`);
+            });
+            
+            socket.on('disconnect', () => {
+                console.log('Disconnected from WebSocket');
+                addMessage('System', 'Disconnected from WebSocket');
+            });
+            
+            socket.on('notification', (data) => {
+                console.log('Received notification:', data);
+                addNotification(data);
+            });
+            
+            socket.on('error', (error) => {
+                console.error('WebSocket error:', error);
+                addMessage('Error', `WebSocket error: ${error}`);
+            });
+        }
+        
+        function disconnectWebSocket() {
+            if (socket) {
+                socket.disconnect();
+                socket = null;
+            }
+        }
+        
+        function addMessage(type, message) {
+            const notifications = document.getElementById('notifications');
+            const div = document.createElement('div');
+            div.textContent = `[${type}] ${message}`;
+            notifications.appendChild(div);
+            notifications.scrollTop = notifications.scrollHeight;
+        }
+        
+        function addNotification(notification) {
+            const notifications = document.getElementById('notifications');
+            const div = document.createElement('div');
+            div.className = `notification ${notification.type}`;
+            div.innerHTML = `
+                <strong>${notification.title}</strong><br>
+                ${notification.message}<br>
+                <small>Type: ${notification.type}, Service: ${notification.service}</small>
+            `;
+            notifications.appendChild(div);
+            notifications.scrollTop = notifications.scrollHeight;
+        }
+        
+        function sendTestNotification() {
+            const userId = document.getElementById('userId').value;
+            const type = document.getElementById('notificationType').value;
+            const title = document.getElementById('notificationTitle').value;
+            const message = document.getElementById('notificationMessage').value;
+            
+            if (!userId || !title || !message) {
+                alert('Please fill in all fields');
+                return;
+            }
+            
+            // Send notification via API
+            fetch('http://localhost:8004/api/v1/notifications/', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    id: `test-${Date.now()}`,
+                    service: 'user_management',
+                    type: type,
+                    title: title,
+                    message: message,
+                    user_id: userId
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                console.log('Notification sent:', data);
+                addMessage('System', `Notification sent: ${data.notification_id}`);
+            })
+            .catch(error => {
+                console.error('Error sending notification:', error);
+                addMessage('Error', `Error sending notification: ${error}`);
+            });
+        }
+    </script>
+</body>
+</html>

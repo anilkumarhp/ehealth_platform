@@ -1,0 +1,53 @@
+services:
+  db:
+    image: postgres:15
+    environment:
+      POSTGRES_DB: pharma_management
+      POSTGRES_USER: pharmauser
+      POSTGRES_PASSWORD: pharmapassword
+    ports:
+      - "5434:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pharmauser -d pharma_management"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6380:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  app:
+    build: .
+    ports:
+      - "8001:8001"
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://pharmauser:pharmapassword@db:5432/pharma_management
+      - REDIS_URL=redis://redis:6379/0
+      - SECRET_KEY=pharma-super-secret-key-change-in-production
+      - ENVIRONMENT=development
+      - DEBUG=true
+      - LOG_LEVEL=INFO
+      - NOTIFICATION_SERVICE_GRPC=notification-api:50051
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./app:/app/app
+      - ./scripts:/app/scripts
+      - ./tests:/app/tests
+      - ./prescriptions:/app/prescriptions
+      - ./logs:/app/logs
+
+volumes:
+  postgres_data:

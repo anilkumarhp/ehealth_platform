@@ -1,0 +1,30 @@
+syntax = "proto3";
+
+package user_service;
+
+// The service definition.
+service UserService {
+  rpc ValidateToken(ValidateTokenRequest) returns (ValidateTokenResponse) {}
+}
+
+// The request message containing the JWT.
+message ValidateTokenRequest {
+  string token = 1;
+}
+
+// The response message containing the user's validated information.
+message ValidateTokenResponse {
+  // --- Mandatory Fields ---
+  string user_id = 1;
+  string full_name = 2;
+  string date_of_birth = 3; // e.g., "YYYY-MM-DD"
+  string gender = 4;
+  string primary_mobile_number = 5;
+  string email = 6;
+  repeated string roles = 7;
+
+  // --- Optional Fields ---
+  string org_id = 8;
+  string national_health_id = 9;
+  string address = 10;
+}

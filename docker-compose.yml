@@ -1,0 +1,213 @@
+services:
+  # Shared Redis service
+  shared-redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - shared_redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # Database Initializer Service
+  db-init:
+    build:
+      context: ./services/user-management
+      dockerfile: Dockerfile
+    environment:
+      - POSTGRES_HOST=user-management-db
+      - POSTGRES_PORT=5432
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=ehealth_user_management
+    depends_on:
+      user-management-db:
+        condition: service_healthy
+    volumes:
+      - ./services/user-management:/app
+      - ./services/user-management/.env:/app/.env
+    command: >
+      bash -c "cd /app && pip install -r requirements.txt &&
+              pip install psycopg2-binary alembic &&
+              cd /app && python -m scripts.fix_database &&
+              cd /app && bash scripts/add_timestamps.sh &&
+              cd /app && python -m scripts.add_refresh_tokens_table &&
+              cd /app && python -m scripts.add_missing_insurance_fields &&
+              cd /app && python -m scripts.merge_migration_heads &&
+              cd /app && alembic stamp head &&
+              cd /app && python -m scripts.simple_init_db &&
+              cd /app && python -m scripts.fix_null_organization_ids"
+    restart: on-failure
+
+  # User Management Service
+  user-management:
+    build:
+      context: ./services/user-management
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - REDIS_URL=redis://shared-redis:6379/0
+      - NOTIFICATION_SERVICE_URL=notification:50051
+      - POSTGRES_HOST=user-management-db
+      - POSTGRES_PORT=5432
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=ehealth_user_management
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID:-dummy-key}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY:-dummy-secret}
+      - AWS_REGION=${AWS_REGION:-us-east-1}
+      - AWS_S3_BUCKET_NAME=${S3_BUCKET_NAME:-ehealth-platform-files}
+      - MFA_ISSUER_NAME=eHealth Platform
+    depends_on:
+      shared-redis:
+        condition: service_healthy
+      user-management-db:
+        condition: service_healthy
+      db-init:
+        condition: service_completed_successfully
+      notification:
+        condition: service_started
+    volumes:
+      - ./services/user-management:/app
+      - ./services/user-management/.env:/app/.env
+    command: >
+      bash -c "cd /app && pip install -r requirements.txt &&
+              pip install celery psycopg2-binary boto3 python-jose[cryptography] stripe pyjwt cryptography pillow &&
+              python -m grpc_tools.protoc -I. --python_out=. --grpc_python_out=. app/protos/notification.proto &&
+              cd /app && PYTHONPATH=/app uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload --log-level debug"
+
+  # User Management Database
+  user-management-db:
+    image: postgres:15-alpine
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=ehealth_user_management
+    ports:
+      - "5433:5432"  # Changed port to avoid conflicts
+    volumes:
+      - user_management_db_data:/var/lib/postgresql/data
+      - ./services/user-management/docker-entrypoint-initdb.d:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    command: >
+      postgres -c 'max_connections=100' -c 'shared_buffers=128MB' -c 'fsync=off' -c 'synchronous_commit=off' -c 'full_page_writes=off'
+
+  # Notification Service
+  notification:
+    build:
+      context: ./services/notification-service
+      dockerfile: Dockerfile
+    ports:
+      - "8004:8004"
+      - "50051:50051"
+    environment:
+      - REDIS_URL=redis://shared-redis:6379/0
+      - LOG_LEVEL=INFO
+    depends_on:
+      shared-redis:
+        condition: service_healthy
+    volumes:
+      - ./services/notification-service:/app
+    command: >
+      bash -c "cd /app && pip install --no-cache-dir -r requirements.txt &&
+              pip install --no-cache-dir -r requirements-dev.txt &&
+              pip install aioredis==2.0.1 python-socketio==5.10.0 websockets==12.0 &&
+              python -m grpc_tools.protoc -I. --python_out=. --grpc_python_out=. app/protos/notification.proto &&
+              cd /app && PYTHONPATH=/app uvicorn app.main:app --host 0.0.0.0 --port 8004 --reload"
+
+  # Chatbot Service
+  chatbot:
+    build:
+      context: ./services/chatbot-service
+      dockerfile: Dockerfile
+    ports:
+      - "8002:8002"
+    environment:
+      - REDIS_URL=redis://shared-redis:6379/0
+      - DATABASE_URL=postgresql+asyncpg://chatbotuser:chatbotpassword@chatbot-db:5432/chatbot_service
+      - USER_SERVICE_URL=http://user-management:8000
+      - NOTIFICATION_SERVICE_URL=notification:50051
+      - LLM_SERVICE_URL=http://llm-service:11434
+      - LLM_MODEL_NAME=smollm2
+    depends_on:
+      shared-redis:
+        condition: service_healthy
+      chatbot-db:
+        condition: service_healthy
+      llm-service:
+        condition: service_started
+    volumes:
+      - ./services/chatbot-service:/app
+
+  # Chatbot Database
+  chatbot-db:
+    image: postgres:15
+    environment:
+      POSTGRES_DB: chatbot_service
+      POSTGRES_USER: chatbotuser
+      POSTGRES_PASSWORD: chatbotpassword
+    ports:
+      - "5435:5432"
+    volumes:
+      - chatbot_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U chatbotuser -d chatbot_service"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # LLM Service
+  llm-service:
+    image: ollama/ollama:latest
+    ports:
+      - "8008:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    environment:
+      - OLLAMA_MODELS=/root/.ollama/models
+
+  # LLM Initializer
+  llm-initializer:
+    image: curlimages/curl:latest
+    command: sh -c "echo 'Waiting for Ollama...' && sleep 60 && curl -X POST http://llm-service:11434/api/pull -d '{\"name\":\"smollm2\"}'"
+    depends_on:
+      llm-service:
+        condition: service_started
+    restart: on-failure
+    
+  # Frontend Service
+  frontend:
+    build:
+      context: ./services/ehealth-frontend
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./services/ehealth-frontend:/app
+    environment:
+      - NODE_ENV=development
+      - VITE_API_URL=http://localhost:8000
+      - VITE_NOTIFICATION_URL=http://localhost:8004
+    depends_on:
+      - user-management
+      - notification
+    command: >
+      sh -c "mkdir -p /app/public &&
+             cp /app/static-landing.html /app/public/ &&
+             npm install &&
+             npm run dev -- --host 0.0.0.0"
+    restart: always
+
+volumes:
+  shared_redis_data:
+  user_management_db_data:
+  chatbot_db_data:
+  ollama_data:

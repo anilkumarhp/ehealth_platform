@@ -1,0 +1,32 @@
+ARG BASE_IMAGE=base-image
+FROM ${BASE_IMAGE}
+
+WORKDIR /app
+
+# Install service-specific dependencies
+COPY ./services/notification-service/requirements.txt /app/
+RUN pip install --no-cache-dir -r /app/requirements.txt
+
+# Copy proto files and generate gRPC code
+COPY ./services/notification-service/app/protos/ /app/app/protos/
+RUN python -m grpc_tools.protoc \
+    -I/app/app/protos \
+    --python_out=/app/app/protos \
+    --grpc_python_out=/app/app/protos \
+    /app/app/protos/notification.proto \
+    && touch /app/app/protos/__init__.py
+
+# Copy application code
+COPY ./services/notification-service /app/
+
+# Set environment variables
+ENV PYTHONPATH=/app
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+
+# Expose the ports
+EXPOSE 8004
+EXPOSE 50051
+
+# Run the application with auto-reload for development
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8004", "--reload"]

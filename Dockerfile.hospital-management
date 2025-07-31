@@ -1,0 +1,23 @@
+ARG BASE_IMAGE=base-image
+FROM ${BASE_IMAGE}
+
+WORKDIR /app
+
+# Install service-specific dependencies
+COPY ./services/hospital-management/requirements/base.txt /app/
+RUN pip install --no-cache-dir -r /app/base.txt
+
+# Copy application code
+COPY ./services/hospital-management /app/
+
+# Set environment variables
+ENV PYTHONPATH=/app
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+ENV DJANGO_SETTINGS_MODULE=hms_config.settings.local
+
+# Expose the port
+EXPOSE 8005
+
+# Run the application with auto-reload for development
+CMD ["python", "manage.py", "runserver", "0.0.0.0:8005"]

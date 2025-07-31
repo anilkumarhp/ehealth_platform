@@ -1,0 +1,6 @@
+@echo off
+echo Creating test results directory...
+mkdir test-results 2>nul
+
+echo Running tests in Docker...
+docker-compose exec notification pytest tests/ -v --cov=app
